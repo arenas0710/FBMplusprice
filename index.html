@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FBM加价计算程序（详细推导版）</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563eb',
+            secondary: '#059669',
+            accent: '#8b5cf6',
+            neutral: '#f3f4f6',
+            warning: '#f59e0b',
+            random: '#dc2626',
+            info: '#64748b'
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .card-shadow {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      }
+      .input-focus {
+        @apply focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none transition-all;
+      }
+      .result-highlight {
+        @apply font-bold text-xl md:text-2xl;
+      }
+      .formula-card {
+        @apply bg-neutral rounded-lg p-3 text-sm text-gray-700 overflow-x-auto;
+      }
+      .status-tag {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+      }
+      .random-badge {
+        @apply inline-flex items-center ml-2 px-2 py-0.5 bg-random/10 text-random text-xs rounded-full;
+      }
+      .step-label {
+        @apply font-semibold text-primary;
+      }
+      .condition-label {
+        @apply font-semibold text-warning;
+      }
+      .random-label {
+        @apply font-semibold text-random;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+  <!-- 页面头部 -->
+  <header class="bg-white shadow-sm sticky top-0 z-10">
+    <div class="container mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center">
+      <div class="flex items-center space-x-2 mb-3 md:mb-0">
+        <i class="fa fa-calculator text-primary text-2xl"></i>
+        <h1 class="text-xl md:text-2xl font-bold text-gray-800">FBM加价计算程序</h1>
+      </div>
+      <div class="text-sm text-gray-500 flex items-center">
+        <i class="fa fa-check-circle text-secondary mr-1"></i> 详细推导每一步计算过程
+      </div>
+    </div>
+  </header>
+
+  <!-- 主要内容区 -->
+  <main class="container mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <!-- 输入表单区域 -->
+      <div class="bg-white rounded-xl p-6 card-shadow">
+        <h2 class="text-lg md:text-xl font-semibold mb-6 flex items-center text-gray-800">
+          <i class="fa fa-pencil-square-o text-primary mr-2"></i> 输入计算参数
+        </h2>
+        
+        <form id="calculatorForm" class="space-y-6">
+          <!-- 货币类型选择 -->
+          <div class="space-y-2">
+            <label for="currencyType" class="block text-sm font-medium text-gray-700">
+              货币类型 <span class="text-red-500">*</span>
+            </label>
+            <select id="currencyType" name="currencyType" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg input-focus bg-white">
+              <option value="">请选择货币类型</option>
+              <option value="eur_gbp">欧元/英镑</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+
+          <!-- 基础参数组 -->
+          <div class="space-y-4">
+            <h3 class="text-md font-medium text-gray-800 flex items-center">
+              <i class="fa fa-cog text-accent mr-2"></i> 基础参数
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="space-y-2">
+                <label for="commission" class="block text-sm font-medium text-gray-700">
+                  佣金 (%) <span class="text-red-500">*</span>
+                </label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+                  <input type="number" id="commission" name="commission" step="0.01" min="0" max="100" required
+                    class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg input-focus">
+                </div>
+              </div>
+              <div class="space-y-2">
+                <label for="marketTax" class="block text-sm font-medium text-gray-700">
+                  市场税 (%) <span class="text-red-500">*</span>
+                </label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+                  <input type="number" id="marketTax" name="marketTax" step="0.01" min="0" max="100" required
+                    class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg input-focus">
+                </div>
+              </div>
+              <div class="space-y-2">
+                <label for="exchangeRate" class="block text-sm font-medium text-gray-700">
+                  汇率 <span class="text-red-500">*</span>
+                </label>
+                <input type="number" id="exchangeRate" name="exchangeRate" step="0.0001" min="0.0001" required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg input-focus">
+              </div>
+              <div class="space-y-2">
+                <label for="profitMargin" class="block text-sm font-medium text-gray-700">
+                  利润率 (%) <span class="text-red-500">*</span>
+                </label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+                  <input type="number" id="profitMargin" name="profitMargin" step="0.01" min="0" max="100" required
+                    class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg input-focus">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 包裹1信息组 -->
+          <div class="space-y-4">
+            <h3 class="text-md font-medium text-gray-800 flex items-center">
+              <i class="fa fa-box text-accent mr-2"></i> 包裹1信息
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="space-y-2">
+                <label for="package1Cost" class="block text-sm font-medium text-gray-700">
+                  成本 <span class="text-red-500">*</span>
+                </label>
+                <input type="number" id="package1Cost" name="package1Cost" step="0.01" min="0" required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg input-focus">
+              </div>
+              <div class="space-y-2">
+                <label for="package1Freight" class="block text-sm font-medium text-gray-700">
+                  运费 <span class="text-red-500">*</span>
+                </label>
+                <input type="number" id="package1Freight" name="package1Freight" step="0.01" min="0" required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg input-focus">
+              </div>
+              <div class="space-y-2">
+                <label for="package1Price" class="block text-sm font-medium text-gray-700">
+                  售价 <span class="text-red-500">*</span>
+                </label>
+                <input type="number" id="package1Price" name="package1Price" step="0.01" min="0" required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg input-focus">
+              </div>
+            </div>
+          </div>
+
+          <!-- 包裹2信息组 -->
+          <div class="space-y-4">
+            <h3 class="text-md font-medium text-gray-800 flex items-center">
+              <i class="fa fa-boxes text-accent mr-2"></i> 包裹2信息
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="space-y-2">
+                <label for="package2Cost" class="block text-sm font-medium text-gray-700">
+                  成本 <span class="text-red-500">*</span>
+                </label>
+                <input type="number" id="package2Cost" name="package2Cost" step="0.01" min="0" required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg input-focus">
+              </div>
+              <div class="space-y-2">
+                <label for="package2Freight" class="block text-sm font-medium text-gray-700">
+                  运费 <span class="text-red-500">*</span>
+                </label>
+                <input type="number" id="package2Freight" name="package2Freight" step="0.01" min="0" required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg input-focus">
+              </div>
+            </div>
+          </div>
+
+          <!-- 操作按钮组 -->
+          <div class="flex flex-col sm:flex-row gap-4 pt-2">
+            <button type="submit" id="calculateBtn" class="flex-1 bg-primary text-white font-medium py-3 px-6 rounded-lg 
+              hover:bg-primary/90 transition-all flex items-center justify-center">
+              <i class="fa fa-calculator mr-2"></i> 计算加价
+            </button>
+            <button type="reset" id="resetBtn" class="flex-1 bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-lg 
+              hover:bg-gray-300 transition-all flex items-center justify-center">
+              <i class="fa fa-refresh mr-2"></i> 重置数据
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 结果展示区域 -->
+      <div class="flex flex-col gap-6">
+        <!-- 结果卡片 -->
+        <div class="bg-white rounded-xl p-6 card-shadow flex-1">
+          <h2 class="text-lg md:text-xl font-semibold mb-6 flex items-center text-gray-800">
+            <i class="fa fa-bar-chart text-secondary mr-2"></i> 计算结果
+          </h2>
+          
+          <div id="resultContainer" class="flex flex-col h-full">
+            <!-- 初始提示 -->
+            <div id="initialPrompt" class="text-center flex-1 flex flex-col justify-center items-center py-8 text-gray-500">
+              <i class="fa fa-lightbulb-o text-4xl mb-4 text-gray-300"></i>
+              <p class="text-lg">请填写左侧表单并点击"计算加价"按钮</p>
+            </div>
+            
+            <!-- 加载状态 -->
+            <div id="loadingSpinner" class="hidden flex-col items-center justify-center flex-1">
+              <div class="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+              <p class="text-gray-600">正在计算中...</p>
+            </div>
+            
+            <!-- 结果内容 -->
+            <div id="resultContent" class="hidden flex-col gap-6">
+              <!-- 包裹2售价结果 -->
+              <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                  <h3 class="text-md font-medium text-gray-800">包裹2售价
+                    <span id="package2RandomBadge" class="hidden random-badge"><i class="fa fa-random mr-1"></i> 随机小数</span>
+                  </h3>
+                  <span id="package2PriceTag" class="status-tag bg-secondary/10 text-secondary">计算完成</span>
+                </div>
+                <p id="package2PriceResult" class="result-highlight text-primary">--</p>
+                <div id="package2PriceFormula" class="formula-card">公式加载中...</div>
+              </div>
+              
+              <!-- 实际售价结果 -->
+              <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                  <h3 class="text-md font-medium text-gray-800">实际售价
+                    <span id="actualRandomBadge" class="hidden random-badge"><i class="fa fa-random mr-1"></i> 随机小数</span>
+                  </h3>
+                  <span id="actualPriceTag" class="status-tag bg-secondary/10 text-secondary">计算完成</span>
+                </div>
+                <p id="actualPriceResult" class="result-highlight text-secondary">--</p>
+                <div id="actualPriceFormula" class="formula-card">公式加载中...</div>
+              </div>
+              
+              <!-- 计算依据 -->
+              <div class="mt-6 space-y-3">
+                <h3 class="text-md font-medium text-gray-800 flex items-center">
+                  <i class="fa fa-file-text-o text-info mr-2"></i> 详细计算推导过程
+                </h3>
+                <div id="calculationBasis" class="bg-neutral rounded-lg p-4 text-sm text-gray-700 leading-relaxed max-h-[400px] overflow-y-auto">
+                  计算过程将在这里详细展示...
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 特殊规则提示 -->
+        <div class="bg-random/10 border border-random/20 rounded-lg p-4 text-sm text-gray-700">
+          <h4 class="font-medium flex items-center mb-2 text-random">
+            <i class="fa fa-exclamation-circle mr-1"></i> 随机小数规则说明
+          </h4>
+          <ul class="list-disc pl-5 space-y-1">
+            <li><span class="random-label">触发条件</span>：仅欧元/英镑类型，包裹2售价/实际售价重算后≥180</li>
+            <li><span class="random-label">生成逻辑</span>：从{0.1,0.2,...,0.9}中随机选择一位小数，与180相加</li>
+            <li><span class="random-label">结果精度</span>：保留1位小数，避免价格重复，确保合规性</li>
+            <li><span class="random-label">未触发场景</span>：重算后仍<180时，保持重算结果（保留2位小数）</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="bg-gray-800 text-gray-300 py-6 mt-12">
+    <div class="container mx-auto px-4 text-center text-sm">
+      <p>FBM加价计算程序（详细推导版）&copy; 2024 | 每一步逻辑完全透明</p>
+      <p class="mt-2">本工具仅提供计算参考，实际定价请结合业务场景调整</p>
+    </div>
+  </footer>
+
+  <!-- 核心计算逻辑 -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.getElementById('calculatorForm');
+      const initialPrompt = document.getElementById('initialPrompt');
+      const loadingSpinner = document.getElementById('loadingSpinner');
+      const resultContent = document.getElementById('resultContent');
+      
+      // 常量定义
+      const THRESHOLD = 180; // 欧元/英镑阈值
+      const PRECISION = 2; // 普通结果保留小数位数
+      const RANDOM_DECIMALS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]; // 一位随机小数选项
+      
+      /**
+       * 生成180+一位随机小数（0.1-0.9），并返回详细生成信息
+       * @returns {Object} 包含随机价格和生成信息的对象
+       */
+      function generateRandomPriceWithInfo() {
+        const selectedDecimal = RANDOM_DECIMALS[Math.floor(Math.random() * RANDOM_DECIMALS.length)];
+        const randomPrice = parseFloat((THRESHOLD + selectedDecimal).toFixed(1));
+        return {
+          price: randomPrice,
+          decimal: selectedDecimal,
+          info: `从随机小数数组{0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9}中随机选择了${selectedDecimal}`
+        };
+      }
+      
+      // 计算按钮点击事件
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // 显示加载状态
+        initialPrompt.classList.add('hidden');
+        resultContent.classList.add('hidden');
+        loadingSpinner.classList.remove('hidden');
+        
+        // 模拟计算延迟（提升用户体验）
+        setTimeout(() => {
+          // 获取并处理输入值
+          const inputs = getInputValues();
+          // 执行计算逻辑（返回详细推导信息）
+          const calculationResult = calculateWithDetailedBasis(inputs);
+          // 更新结果展示
+          updateResultDisplay(calculationResult);
+          
+          // 隐藏加载状态，显示结果
+          loadingSpinner.classList.add('hidden');
+          resultContent.classList.remove('hidden');
+        }, 1200);
+      });
+      
+      // 重置按钮点击事件
+      document.getElementById('resetBtn').addEventListener('click', function() {
+        initialPrompt.classList.remove('hidden');
+        resultContent.classList.add('hidden');
+        loadingSpinner.classList.add('hidden');
+        
+        // 清空结果区域内容
+        document.getElementById('package2PriceResult').textContent = '--';
+        document.getElementById('package2PriceFormula').textContent = '公式加载中...';
+        document.getElementById('package2PriceTag').className = 'status-tag bg-secondary/10 text-secondary';
+        document.getElementById('package2PriceTag').textContent = '计算完成';
+        document.getElementById('package2RandomBadge').classList.add('hidden');
+        
+        document.getElementById('actualPriceResult').textContent = '--';
+        document.getElementById('actualPriceFormula').textContent = '公式加载中...';
+        document.getElementById('actualPriceTag').className = 'status-tag bg-secondary/10 text-secondary';
+        document.getElementById('actualPriceTag').textContent = '计算完成';
+        document.getElementById('actualRandomBadge').classList.add('hidden');
+        
+        document.getElementById('calculationBasis').textContent = '计算过程将在这里详细展示...';
+      });
+      
+      /**
+       * 获取并格式化输入值，同时计算基础参数（总成本、总运费）
+       * @returns {Object} 格式化后的输入参数
+       */
+      function getInputValues() {
+        const package1Cost = parseFloat(document.getElementById('package1Cost').value);
+        const package1Freight = parseFloat(document.getElementById('package1Freight').value);
+        const package2Cost = parseFloat(document.getElementById('package2Cost').value);
+        const package2Freight = parseFloat(document.getElementById('package2Freight').value);
+        
+        // 计算基础参数
+        const totalCost = package1Cost + package2Cost;
+        const totalFreight = package1Freight + package2Freight;
+        
+        return {
+          currencyType: document.getElementById('currencyType').value,
+          commission: parseFloat(document.getElementById('commission').value) / 100, // 转换为小数
+          marketTax: parseFloat(document.getElementById('marketTax').value) / 100, // 转换为小数
+          exchangeRate: parseFloat(document.getElementById('exchangeRate').value),
+          profitMargin: parseFloat(document.getElementById('profitMargin').value) / 100, // 转换为小数
+          package1Cost: package1Cost,
+          package1Freight: package1Freight,
+          package1Price: parseFloat(document.getElementById('package1Price').value),
+          package2Cost: package2Cost,
+          package2Freight: package2Freight,
+          totalCost: totalCost,
+          totalFreight: totalFreight,
+          // 保留原始百分比值，用于展示
+          rawCommission: parseFloat(document.getElementById('commission').value),
+          rawMarketTax: parseFloat(document.getElementById('marketTax').value),
+          rawProfitMargin: parseFloat(document.getElementById('profitMargin').value)
+        };
+      }
+      
+      /**
+       * 核心计算逻辑，返回详细的推导过程
+       * @param {Object} inputs - 格式化后的输入参数
+       * @returns {Object} 包含计算结果和详细推导依据的对象
+       */
+      function calculateWithDetailedBasis(inputs) {
+        const { currencyType } = inputs;
+        let detailedBasis = []; // 用数组存储每一步推导，便于格式化
+        let package1ActualPrice = 0;
+        
+        // ====================== 步骤1：计算基础参数 ======================
+        detailedBasis.push(`
+          <p><span class="step-label">步骤1：计算基础参数（总成本、总运费）</span></p>
+          <p>- 计算公式：总成本 = 包裹1成本 + 包裹2成本</p>
+          <p>- 计算过程：${inputs.package1Cost.toFixed(PRECISION)} + ${inputs.package2Cost.toFixed(PRECISION)} = ${inputs.totalCost.toFixed(PRECISION)}</p>
+          <p>- 计算公式：总运费 = 包裹1运费 + 包裹2运费</p>
+          <p>- 计算过程：${inputs.package1Freight.toFixed(PRECISION)} + ${inputs.package2Freight.toFixed(PRECISION)} = ${inputs.totalFreight.toFixed(PRECISION)}</p>
+          <hr class="my-3 border-gray-200">
+        `);
+        
+        // ====================== 步骤2：计算包裹1实际价格 ======================
+        detailedBasis.push(`<p><span class="step-label">步骤2：计算包裹1实际价格</span></p>`);
+        
+        if (currencyType === 'eur_gbp') {
+          detailedBasis.push(`
+            <p>- 货币类型：欧元/英镑，阈值判断标准：${THRESHOLD}</p>
+            <p>- 包裹1售价：${inputs.package1Price.toFixed(PRECISION)}</p>
+            <p>- <span class="condition-label">判断条件</span>：包裹1售价 ${inputs.package1Price < THRESHOLD ? '<' : '≥'} ${THRESHOLD}</p>
+          `);
+          
+          if (inputs.package1Price < THRESHOLD) {
+            // 包裹1售价<180：含市场税
+            package1ActualPrice = inputs.package1Price * (1 - inputs.commission - inputs.marketTax) * inputs.exchangeRate;
+            detailedBasis.push(`
+              <p>- 适用公式：包裹1实际价格 = 包裹1售价 × (1 - 佣金 - 市场税) × 汇率</p>
+              <p>- 数值代入：${inputs.package1Price.toFixed(PRECISION)} × (1 - ${inputs.rawCommission.toFixed(PRECISION)}% - ${inputs.rawMarketTax.toFixed(PRECISION)}%) × ${inputs.exchangeRate.toFixed(4)}</p>
+              <p>- 分步计算：${inputs.package1Price.toFixed(PRECISION)} × (1 - ${inputs.commission.toFixed(4)} - ${inputs.marketTax.toFixed(4)}) × ${inputs.exchangeRate.toFixed(4)}</p>
+              <p>- 分步计算：${inputs.package1Price.toFixed(PRECISION)} × ${(1 - inputs.commission - inputs.marketTax).toFixed(4)} × ${inputs.exchangeRate.toFixed(4)}</p>
+              <p>- 最终结果：${package1ActualPrice.toFixed(PRECISION)}</p>
+            `);
+          } else {
+            // 包裹1售价≥180：不含市场税
+            package1ActualPrice = inputs.package1Price * (1 - inputs.commission) * inputs.exchangeRate;
+            detailedBasis.push(`
+              <p>- 适用公式：包裹1实际价格 = 包裹1售价 × (1 - 佣金) × 汇率</p>
+              <p>- 数值代入：${inputs.package1Price.toFixed(PRECISION)} × (1 - ${inputs.rawCommission.toFixed(PRECISION)}%) × ${inputs.exchangeRate.toFixed(4)}</p>
+              <p>- 分步计算：${inputs.package1Price.toFixed(PRECISION)} × ${(1 - inputs.commission).toFixed(4)} × ${inputs.exchangeRate.toFixed(4)}</p>
+              <p>- 最终结果：${package1ActualPrice.toFixed(PRECISION)}</p>
+            `);
+          }
+        } else {
+          // 其他货币：不含市场税
+          package1ActualPrice = inputs.package1Price * (1 - inputs.commission) * inputs.exchangeRate;
+          detailedBasis.push(`
+            <p>- 货币类型：其他</p>
+            <p>- 适用公式：包裹1实际价格 = 包裹1售价 × (1 - 佣金) × 汇率</p>
+            <p>- 数值代入：${inputs.package1Price.toFixed(PRECISION)} × (1 - ${inputs.rawCommission.toFixed(PRECISION)}%) × ${inputs.exchangeRate.toFixed(4)}</p>
+            <p>- 分步计算：${inputs.package1Price.toFixed(PRECISION)} × ${(1 - inputs.commission).toFixed(4)} × ${inputs.exchangeRate.toFixed(4)}</p>
+            <p>- 最终结果：${package1ActualPrice.toFixed(PRECISION)}</p>
+          `);
+        }
+        
+        detailedBasis.push(`<hr class="my-3 border-gray-200">`);
+        
+        // ====================== 步骤3：计算包裹2售价 ======================
+        const package2Result = calculatePackage2PriceWithDetail(inputs, package1ActualPrice, detailedBasis);
+        
+        // ====================== 步骤4：计算实际售价 ======================
+        const actualResult = calculateActualPriceWithDetail(inputs, detailedBasis);
+        
+        // 合并所有推导步骤
+        const fullBasis = detailedBasis.join('');
+        
+        return {
+          package2Price: package2Result.price,
+          package2PriceFormula: package2Result.formula,
+          package2PriceStatus: package2Result.status,
+          isPackage2Random: package2Result.isRandom,
+          actualPrice: actualResult.price,
+          actualPriceFormula: actualResult.formula,
+          actualPriceStatus: actualResult.status,
+          isActualRandom: actualResult.isRandom,
+          calculationBasis: fullBasis
+        };
+      }
+      
+      /**
+       * 计算包裹2售价（含详细推导过程）
+       * @param {Object} inputs - 输入参数
+       * @param {number} package1ActualPrice - 包裹1实际价格
+       * @param {Array} basisArr - 推导过程存储数组
+       * @returns {Object} 包裹2售价结果及相关信息
+       */
+      function calculatePackage2PriceWithDetail(inputs, package1ActualPrice, basisArr) {
+        const { currencyType, totalCost, totalFreight, profitMargin, commission, marketTax, exchangeRate, rawCommission, rawMarketTax, rawProfitMargin } = inputs;
+        let price = 0;
+        let formula = '';
+        let status = '';
+        let isRandom = false;
+        
+        basisArr.push(`<p><span class="step-label">步骤3：计算包裹2售价</span></p>`);
+        
+        if (currencyType === 'eur_gbp') {
+          // 欧元/英镑：三步计算法
+          basisArr.push(`<p>- 货币类型：欧元/英镑，采用"初始计算→阈值判断→重算（如需）→随机小数（如需）"流程</p>`);
+          
+          // 子步骤3.1：初始计算（不含市场税）
+          const initialPrice = [(totalCost + totalFreight) / (1 - profitMargin) - package1ActualPrice] / [(1 - commission) * exchangeRate];
+          basisArr.push(`
+            <p><span class="step-label">子步骤3.1：初始计算（不含市场税）</span></p>
+            <p>- 适用公式：包裹2售价 = [(总成本+总运费)/(1-利润率) - 包裹1实际价格] / [(1-佣金)×汇率]</p>
+            <p>- 数值代入：[(${totalCost.toFixed(PRECISION)}+${totalFreight.toFixed(PRECISION)})/(1-${rawProfitMargin.toFixed(PRECISION)}%) - ${package1ActualPrice.toFixed(PRECISION)}] / [(1-${rawCommission.toFixed(PRECISION)}%)×${exchangeRate.toFixed(4)}]</p>
+            <p>- 分步计算1：(总成本+总运费) = ${(totalCost + totalFreight).toFixed(PRECISION)}</p>
+            <p>- 分步计算2：(1-利润率) = 1 - ${profitMargin.toFixed(4)} = ${(1 - profitMargin).toFixed(4)}</p>
+            <p>- 分步计算3：(总成本+总运费)/(1-利润率) = ${(totalCost + totalFreight).toFixed(PRECISION)} / ${(1 - profitMargin).toFixed(4)} = ${((totalCost + totalFreight) / (1 - profitMargin)).toFixed(PRECISION)}</p>
+            <p>- 分步计算4：减去包裹1实际价格 = ${((totalCost + totalFreight) / (1 - profitMargin)).toFixed(PRECISION)} - ${package1ActualPrice.toFixed(PRECISION)} = ${(((totalCost + totalFreight) / (1 - profitMargin)) - package1ActualPrice).toFixed(PRECISION)}</p>
+            <p>- 分步计算5：(1-佣金) = 1 - ${commission.toFixed(4)} = ${(1 - commission).toFixed(4)}</p>
+            <p>- 分步计算6：(1-佣金)×汇率 = ${(1 - commission).toFixed(4)} × ${exchangeRate.toFixed(4)} = ${((1 - commission) * exchangeRate).toFixed(4)}</p>
+            <p>- 初始计算结果：${initialPrice.toFixed(PRECISION)}</p>
+          `);
+          
+          // 子步骤3.2：阈值判断
+          basisArr.push(`
+            <p><span class="step-label">子步骤3.2：阈值判断</span></p>
+            <p>- 阈值标准：${THRESHOLD}</p>
+            <p>- <span class="condition-label">判断条件</span>：初始计算结果 ${initialPrice < THRESHOLD ? '<' : '≥'} ${THRESHOLD}</p>
+          `);
+          
+          if (initialPrice >= THRESHOLD) {
+            // 初始结果≥180：保持不变
+            price = initialPrice.toFixed(PRECISION);
+            formula = `[(总成本+总运费)/(1-利润率) - 包裹1实际价格] / [(1-佣金)×汇率]`;
+            status = `≥${THRESHOLD} 无需重算`;
+            basisArr.push(`
+              <p>- 结论：初始结果已满足阈值要求，无需重算</p>
+              <p>- 包裹2最终售价：${price}</p>
+            `);
+          } else {
+            // 初始结果<180：子步骤3.3 执行重算（含市场税）
+            const recalcPrice = [(totalCost + totalFreight) / (1 - profitMargin) - package1ActualPrice] / [(1 - commission - marketTax) * exchangeRate];
+            basisArr.push(`
+              <p><span class="step-label">子步骤3.3：执行重算（含市场税）</span></p>
+              <p>- 原因：初始结果<${THRESHOLD}，需通过含市场税公式提升价格</p>
+              <p>- 适用公式：包裹2售价 = [(总成本+总运费)/(1-利润率) - 包裹1实际价格] / [(1-佣金-市场税)×汇率]</p>
+              <p>- 数值代入：[(${totalCost.toFixed(PRECISION)}+${totalFreight.toFixed(PRECISION)})/(1-${rawProfitMargin.toFixed(PRECISION)}%) - ${package1ActualPrice.toFixed(PRECISION)}] / [(1-${rawCommission.toFixed(PRECISION)}% - ${rawMarketTax.toFixed(PRECISION)}%)×${exchangeRate.toFixed(4)}]</p>
+              <p>- 分步计算1：(总成本+总运费)/(1-利润率) = ${((totalCost + totalFreight) / (1 - profitMargin)).toFixed(PRECISION)}（同初始计算）</p>
+              <p>- 分步计算2：减去包裹1实际价格 = ${(((totalCost + totalFreight) / (1 - profitMargin)) - package1ActualPrice).toFixed(PRECISION)}（同初始计算）</p>
+              <p>- 分步计算3：(1-佣金-市场税) = 1 - ${commission.toFixed(4)} - ${marketTax.toFixed(4)} = ${(1 - commission - marketTax).toFixed(4)}</p>
+              <p>- 分步计算4：(1-佣金-市场税)×汇率 = ${(1 - commission - marketTax).toFixed(4)} × ${exchangeRate.toFixed(4)} = ${((1 - commission - marketTax) * exchangeRate).toFixed(4)}</p>
+              <p>- 重算结果：${recalcPrice.toFixed(PRECISION)}</p>
+            `);
+            
+            // 子步骤3.4：重算结果判断（是否触发随机小数）
+            basisArr.push(`
+              <p><span class="step-label">子步骤3.4：重算结果判断（随机小数规则触发检查）</span></p>
+              <p>- <span class="condition-label">判断条件</span>：重算结果 ${recalcPrice < THRESHOLD ? '<' : '≥'} ${THRESHOLD}</p>
+            `);
+            
+            if (recalcPrice >= THRESHOLD) {
+              // 重算结果≥180：触发随机小数规则
+              const randomInfo = generateRandomPriceWithInfo();
+              price = randomInfo.price.toFixed(1);
+              formula = `随机小数公式：180 + 一位随机小数（0.1-0.9）`;
+              status = `重算≥${THRESHOLD} 随机小数`;
+              isRandom = true;
+              
+              basisArr.push(`
+                <p>- <span class="random-label">触发随机小数规则</span>：重算结果≥${THRESHOLD}，需生成180+一位随机小数避免价格重复</p>
+                <p>- 随机小数生成规则：从{0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9}中随机选择一个数值与180相加</p>
+                <p>- ${randomInfo.info}</p>
+                <p>- 随机价格计算：180 + ${randomInfo.decimal} = ${randomInfo.price}</p>
+                <p>- 包裹2最终售价（保留1位小数）：${price}</p>
+              `);
+            } else {
+              // 重算结果仍<180：保持重算结果
+              price = recalcPrice.toFixed(PRECISION);
+              formula = `[(总成本+总运费)/(1-利润率) - 包裹1实际价格] / [(1-佣金-市场税)×汇率]`;
+              status = `重算仍<${THRESHOLD} 含市场税`;
+              
+              basisArr.push(`
+                <p>- 结论：重算后结果仍<${THRESHOLD}，不触发随机小数规则</p>
+                <p>- 包裹2最终售价：${price}</p>
+              `);
+            }
+          }
+        } else {
+          // 其他货币：标准计算（一步到位）
+          price = [(totalCost + totalFreight) / (1 - profitMargin) - package1ActualPrice] / [(1 - commission - marketTax) * exchangeRate];
+          price = price.toFixed(PRECISION);
+          formula = `[(总成本+总运费)/(1-利润率) - 包裹1实际价格] / [(1-佣金-市场税)×汇率]`;
+          status = '其他货币标准计算';
+          
+          basisArr.push(`
+            <p>- 货币类型：其他，无阈值判断和随机小数规则</p>
+            <p>- 适用公式：${formula}</p>
+            <p>- 数值代入：[(${totalCost.toFixed(PRECISION)}+${totalFreight.toFixed(PRECISION)})/(1-${rawProfitMargin.toFixed(PRECISION)}%) - ${package1ActualPrice.toFixed(PRECISION)}] / [(1-${rawCommission.toFixed(PRECISION)}% - ${rawMarketTax.toFixed(PRECISION)}%)×${exchangeRate.toFixed(4)}]</p>
+            <p>- 分步计算1：(总成本+总运费)/(1-利润率) = ${((totalCost + totalFreight) / (1 - profitMargin)).toFixed(PRECISION)}</p>
+            <p>- 分步计算2：减去包裹1实际价格 = ${(((totalCost + totalFreight) / (1 - profitMargin)) - package1ActualPrice).toFixed(PRECISION)}</p>
+            <p>- 分步计算3：(1-佣金-市场税)×汇率 = ${((1 - commission - marketTax) * exchangeRate).toFixed(4)}</p>
+            <p>- 最终结果：${price}</p>
+          `);
+        }
+        
+        basisArr.push(`<hr class="my-3 border-gray-200">`);
+        
+        return {
+          price: price,
+          formula: formula,
+          status: status,
+          isRandom: isRandom
+        };
+      }
+      
+      /**
+       * 计算实际售价（含详细推导过程）
+       * @param {Object} inputs - 输入参数
+       * @param {Array} basisArr - 推导过程存储数组
+       * @returns {Object} 实际售价结果及相关信息
+       */
+      function calculateActualPriceWithDetail(inputs, basisArr) {
+        const { currencyType, package1Cost, package1Freight, profitMargin, commission, marketTax, exchangeRate, rawCommission, rawMarketTax, rawProfitMargin } = inputs;
+        let price = 0;
+        let formula = '';
+        let status = '';
+        let isRandom = false;
+        const numerator = package1Cost + package1Freight; // 固定分子：包裹1成本+包裹1运费
+        
+        basisArr.push(`<p><span class="step-label">步骤4：计算实际售价</span></p>`);
+        basisArr.push(`<p>- 固定分子：包裹1成本 + 包裹1运费 = ${package1Cost.toFixed(PRECISION)} + ${package1Freight.toFixed(PRECISION)} = ${numerator.toFixed(PRECISION)}</p>`);
+        
+        if (currencyType === 'eur_gbp') {
+          // 欧元/英镑：三步计算法
+          basisArr.push(`<p>- 货币类型：欧元/英镑，采用"初始计算→阈值判断→重算（如需）→随机小数（如需）"流程</p>`);
+          
+          // 子步骤4.1：初始计算（不含市场税）
+          const initialPrice = numerator / [(1 - commission) * (1 - profitMargin) * exchangeRate];
+          basisArr.push(`
+            <p><span class="step-label">子步骤4.1：初始计算（不含市场税）</span></p>
+            <p>- 适用公式：实际售价 = (包裹1成本+包裹1运费) / [(1-佣金)×(1-利润率)×汇率]</p>
+            <p>- 数值代入：${numerator.toFixed(PRECISION)} / [(1-${rawCommission.toFixed(PRECISION)}%)×(1-${rawProfitMargin.toFixed(PRECISION)}%)×${exchangeRate.toFixed(4)}]</p>
+            <p>- 分步计算1：(1-佣金) = 1 - ${commission.toFixed(4)} = ${(1 - commission).toFixed(4)}</p>
+            <p>- 分步计算2：(1-利润率) = 1 - ${profitMargin.toFixed(4)} = ${(1 - profitMargin).toFixed(4)}</p>
+            <p>- 分步计算3：汇率 = ${exchangeRate.toFixed(4)}</p>
+            <p>- 分步计算4：分母 = ${(1 - commission).toFixed(4)} × ${(1 - profitMargin).toFixed(4)} × ${exchangeRate.toFixed(4)} = ${((1 - commission) * (1 - profitMargin) * exchangeRate).toFixed(4)}</p>
+            <p>- 初始计算结果：${numerator.toFixed(PRECISION)} / ${((1 - commission) * (1 - profitMargin) * exchangeRate).toFixed(4)} = ${initialPrice.toFixed(PRECISION)}</p>
+          `);
+          
+          // 子步骤4.2：阈值判断
+          basisArr.push(`
+            <p><span class="step-label">子步骤4.2：阈值判断</span></p>
+            <p>- 阈值标准：${THRESHOLD}</p>
+            <p>- <span class="condition-label">判断条件</span>：初始计算结果 ${initialPrice < THRESHOLD ? '<' : '≥'} ${THRESHOLD}</p>
+          `);
+          
+          if (initialPrice >= THRESHOLD) {
+            // 初始结果≥180：保持不变
+            price = initialPrice.toFixed(PRECISION);
+            formula = `(包裹1成本+包裹1运费) / [(1-佣金)×(1-利润率)×汇率]`;
+            status = `≥${THRESHOLD} 无需重算`;
+            basisArr.push(`
+              <p>- 结论：初始结果已满足阈值要求，无需重算</p>
+              <p>- 实际最终售价：${price}</p>
+            `);
+          } else {
+            // 初始结果<180：子步骤4.3 执行重算（含市场税）
+            const recalcPrice = numerator / [(1 - commission - marketTax) * (1 - profitMargin) * exchangeRate];
+            basisArr.push(`
+              <p><span class="step-label">子步骤4.3：执行重算（含市场税）</span></p>
+              <p>- 原因：初始结果<${THRESHOLD}，需通过含市场税公式提升价格</p>
+              <p>- 适用公式：实际售价 = (包裹1成本+包裹1运费) / [(1-佣金-市场税)×(1-利润率)×汇率]</p>
+              <p>- 数值代入：${numerator.toFixed(PRECISION)} / [(1-${rawCommission.toFixed(PRECISION)}% - ${rawMarketTax.toFixed(PRECISION)}%)×(1-${rawProfitMargin.toFixed(PRECISION)}%)×${exchangeRate.toFixed(4)}]</p>
+              <p>- 分步计算1：(1-佣金-市场税) = 1 - ${commission.toFixed(4)} - ${marketTax.toFixed(4)} = ${(1 - commission - marketTax).toFixed(4)}</p>
+              <p>- 分步计算2：(1-利润率) = ${(1 - profitMargin).toFixed(4)}（同初始计算）</p>
+              <p>- 分步计算3：汇率 = ${exchangeRate.toFixed(4)}（同初始计算）</p>
+              <p>- 分步计算4：分母 = ${(1 - commission - marketTax).toFixed(4)} × ${(1 - profitMargin).toFixed(4)} × ${exchangeRate.toFixed(4)} = ${((1 - commission - marketTax) * (1 - profitMargin) * exchangeRate).toFixed(4)}</p>
+              <p>- 重算结果：${numerator.toFixed(PRECISION)} / ${((1 - commission - marketTax) * (1 - profitMargin) * exchangeRate).toFixed(4)} = ${recalcPrice.toFixed(PRECISION)}</p>
+            `);
+            
+            // 子步骤4.4：重算结果判断（是否触发随机小数）
+            basisArr.push(`
+              <p><span class="step-label">子步骤4.4：重算结果判断（随机小数规则触发检查）</span></p>
+              <p>- <span class="condition-label">判断条件</span>：重算结果 ${recalcPrice < THRESHOLD ? '<' : '≥'} ${THRESHOLD}</p>
+            `);
+            
+            if (recalcPrice >= THRESHOLD) {
+              // 重算结果≥180：触发随机小数规则
+              const randomInfo = generateRandomPriceWithInfo();
+              price = randomInfo.price.toFixed(1);
+              formula = `随机小数公式：180 + 一位随机小数（0.1-0.9）`;
+              status = `重算≥${THRESHOLD} 随机小数`;
+              isRandom = true;
+              
+              basisArr.push(`
+                <p>- <span class="random-label">触发随机小数规则</span>：重算结果≥${THRESHOLD}，需生成180+一位随机小数避免价格重复</p>
+                <p>- 随机小数生成规则：从{0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9}中随机选择一个数值与180相加</p>
+                <p>- ${randomInfo.info}</p>
+                <p>- 随机价格计算：180 + ${randomInfo.decimal} = ${randomInfo.price}</p>
+                <p>- 实际最终售价（保留1位小数）：${price}</p>
+              `);
+            } else {
+              // 重算结果仍<180：保持重算结果
+              price = recalcPrice.toFixed(PRECISION);
+              formula = `(包裹1成本+包裹1运费) / [(1-佣金-市场税)×(1-利润率)×汇率]`;
+              status = `重算仍<${THRESHOLD} 含市场税`;
+              
+              basisArr.push(`
+                <p>- 结论：重算后结果仍<${THRESHOLD}，不触发随机小数规则</p>
+                <p>- 实际最终售价：${price}</p>
+              `);
+            }
+          }
+        } else {
+          // 其他货币：标准计算（一步到位）
+          price = numerator / [(1 - commission - marketTax) * (1 - profitMargin) * exchangeRate];
+          price = price.toFixed(PRECISION);
+          formula = `(包裹1成本+包裹1运费) / [(1-佣金-市场税)×(1-利润率)×汇率]`;
+          status = '其他货币标准计算';
+          
+          basisArr.push(`
+            <p>- 货币类型：其他，无阈值判断和随机小数规则</p>
+            <p>- 适用公式：${formula}</p>
+            <p>- 数值代入：${numerator.toFixed(PRECISION)} / [(1-${rawCommission.toFixed(PRECISION)}% - ${rawMarketTax.toFixed(PRECISION)}%)×(1-${rawProfitMargin.toFixed(PRECISION)}%)×${exchangeRate.toFixed(4)}]</p>
+            <p>- 分步计算1：(1-佣金-市场税) = ${(1 - commission - marketTax).toFixed(4)}</p>
+            <p>- 分步计算2：(1-利润率) = ${(1 - profitMargin).toFixed(4)}</p>
+            <p>- 分步计算3：分母 = ${(1 - commission - marketTax).toFixed(4)} × ${(1 - profitMargin).toFixed(4)} × ${exchangeRate.toFixed(4)} = ${((1 - commission - marketTax) * (1 - profitMargin) * exchangeRate).toFixed(4)}</p>
+            <p>- 最终结果：${price}</p>
+          `);
+        }
+        
+        return {
+          price: price,
+          formula: formula,
+          status: status,
+          isRandom: isRandom
+        };
+      }
+      
+      /**
+       * 更新结果展示区域，包括结果和详细推导过程
+       * @param {Object} results - 计算结果对象
+       */
+      function updateResultDisplay(results) {
+        // 更新包裹2售价
+        document.getElementById('package2PriceResult').textContent = results.package2Price;
+        document.getElementById('package2PriceFormula').textContent = results.package2PriceFormula;
+        document.getElementById('package2PriceTag').textContent = results.package2PriceStatus;
+        
+        // 控制包裹2随机小数徽章显示
+        if (results.isPackage2Random) {
+          document.getElementById('package2RandomBadge').classList.remove('hidden');
+          document.getElementById('package2PriceTag').className = 'status-tag bg-random/10 text-random';
+        } else {
+          document.getElementById('package2RandomBadge').classList.add('hidden');
+          // 设置普通状态标签样式
+          if (results.package2PriceStatus.includes('≥180')) {
+            document.getElementById('package2PriceTag').className = 'status-tag bg-secondary/10 text-secondary';
+          } else if (results.package2PriceStatus.includes('<180')) {
+            document.getElementById('package2PriceTag').className = 'status-tag bg-warning/10 text-warning';
+          } else {
+            document.getElementById('package2PriceTag').className = 'status-tag bg-info/10 text-info';
+          }
+        }
+        
+        // 更新实际售价
+        document.getElementById('actualPriceResult').textContent = results.actualPrice;
+        document.getElementById('actualPriceFormula').textContent = results.actualPriceFormula;
+        document.getElementById('actualPriceTag').textContent = results.actualPriceStatus;
+        
+        // 控制实际售价随机小数徽章显示
+        if (results.isActualRandom) {
+          document.getElementById('actualRandomBadge').classList.remove('hidden');
+          document.getElementById('actualPriceTag').className = 'status-tag bg-random/10 text-random';
+        } else {
+          document.getElementById('actualRandomBadge').classList.add('hidden');
+          // 设置普通状态标签样式
+          if (results.actualPriceStatus.includes('≥180')) {
+            document.getElementById('actualPriceTag').className = 'status-tag bg-secondary/10 text-secondary';
+          } else if (results.actualPriceStatus.includes('<180')) {
+            document.getElementById('actualPriceTag').className = 'status-tag bg-warning/10 text-warning';
+          } else {
+            document.getElementById('actualPriceTag').className = 'status-tag bg-info/10 text-info';
+          }
+        }
+        
+        // 更新详细计算依据（支持HTML格式，保留换行和格式）
+        document.getElementById('calculationBasis').innerHTML = results.calculationBasis;
+      }
+    });
+  </script>
+</body>
+</html>
